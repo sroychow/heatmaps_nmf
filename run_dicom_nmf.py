@@ -2,14 +2,25 @@
 
 import argparse
 
-from dicom_nmf import DEFAULT_BRAIN_HU_RANGE, find_dicom_files, plot_dicom, train_dicom_nmf
+import joblib
+
+from dicom_nmf import (
+    DEFAULT_BRAIN_HU_RANGE,
+    calibrate_threshold,
+    find_dicom_files,
+    plot_dicom,
+    score_dicom_nmf,
+    train_dicom_nmf,
+)
 
 
 def parse_shape(value):
     try:
         rows, columns = (int(item) for item in value.lower().split("x", 1))
     except (TypeError, ValueError) as exc:
-        raise argparse.ArgumentTypeError("shape must use ROWSxCOLUMNS, for example 512x512") from exc
+        raise argparse.ArgumentTypeError(
+            "shape must use ROWSxCOLUMNS, for example 512x512"
+        ) from exc
     if rows <= 0 or columns <= 0:
         raise argparse.ArgumentTypeError("shape dimensions must be positive")
     return rows, columns
@@ -22,7 +33,21 @@ def build_parser():
     parser.add_argument("input", help="DICOM file or directory (searched recursively)")
     parser.add_argument("--output-model", default="dicom_nmf_detector.joblib")
     parser.add_argument("--scores-csv", default="dicom_nmf_scores.csv")
-    parser.add_argument("--preview", help="Save a three-panel preview of the first CT slice")
+    parser.add_argument(
+        "--validation-input",
+        help="Held-out normal CT directory for threshold calibration",
+    )
+    parser.add_argument(
+        "--validation-scores-csv", default="dicom_nmf_validation_scores.csv"
+    )
+    parser.add_argument(
+        "--test-input", help="Unseen CT directory to score after training"
+    )
+    parser.add_argument("--test-scores-csv", default="dicom_nmf_test_scores.csv")
+    parser.add_argument("--threshold-percentile", type=float, default=95.0)
+    parser.add_argument(
+        "--preview", help="Save a three-panel preview of the first CT slice"
+    )
     parser.add_argument("--components", type=int, default=10)
     parser.add_argument("--hu-min", type=float, default=DEFAULT_BRAIN_HU_RANGE[0])
     parser.add_argument("--hu-max", type=float, default=DEFAULT_BRAIN_HU_RANGE[1])
@@ -41,12 +66,42 @@ def main(argv=None):
             raise SystemExit("No DICOM files found")
         plot_dicom(files[0], args.preview, args.hu_min, args.hu_max)
     artifact, scores = train_dicom_nmf(
-        args.input, args.output_model, args.components, args.hu_min, args.hu_max,
-        args.target_shape, args.max_iter
+        args.input,
+        args.output_model,
+        args.components,
+        args.hu_min,
+        args.hu_max,
+        args.target_shape,
+        args.max_iter,
     )
     scores.to_csv(args.scores_csv, index=False)
-    print(f"Trained NMF on {len(scores)} HU-screened CT slices with shape {artifact['shape']}")
+    print(
+        f"Trained NMF on {len(scores)} HU-screened CT slices with shape {artifact['shape']}"
+    )
     print(f"Saved model to {args.output_model} and scores to {args.scores_csv}")
+
+    if args.validation_input:
+        validation = score_dicom_nmf(args.validation_input, artifact)
+        threshold = calibrate_threshold(
+            validation["reconstruction_error"], args.threshold_percentile
+        )
+        artifact["threshold"] = threshold
+        artifact["threshold_percentile"] = args.threshold_percentile
+        joblib.dump(artifact, args.output_model)
+        validation["predicted_anomaly"] = (
+            validation["reconstruction_error"] >= threshold
+        )
+        validation.to_csv(args.validation_scores_csv, index=False)
+        print(f"Calibrated anomaly threshold: {threshold:.6g}")
+
+    if args.test_input:
+        test_scores = score_dicom_nmf(args.test_input, artifact)
+        test_scores.to_csv(args.test_scores_csv, index=False)
+        print(f"Scored {len(test_scores)} test slices; saved {args.test_scores_csv}")
+        if "threshold" not in artifact:
+            print(
+                "No validation input supplied; test scores have no anomaly prediction"
+            )
 
 
 if __name__ == "__main__":

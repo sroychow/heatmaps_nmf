@@ -34,7 +34,10 @@ def pixels_to_hounsfield(dataset, pixels=None):
         padding = stored == float(dataset.PixelPaddingValue)
         if hasattr(dataset, "PixelPaddingRangeLimit"):
             low, high = sorted(
-                (float(dataset.PixelPaddingValue), float(dataset.PixelPaddingRangeLimit))
+                (
+                    float(dataset.PixelPaddingValue),
+                    float(dataset.PixelPaddingRangeLimit),
+                )
             )
             padding = (stored >= low) & (stored <= high)
         hu[padding] = np.nan
@@ -60,7 +63,9 @@ def read_dicom(path, hu_min=0.0, hu_max=100.0):
     dataset = pydicom.dcmread(path)
     modality = str(getattr(dataset, "Modality", "")).upper()
     if modality and modality != "CT":
-        raise ValueError(f"{path} is modality {modality!r}; Hounsfield conversion requires CT")
+        raise ValueError(
+            f"{path} is modality {modality!r}; Hounsfield conversion requires CT"
+        )
     hu = pixels_to_hounsfield(dataset)
     if hu.ndim != 2:
         raise ValueError(
@@ -104,7 +109,9 @@ def load_dicom_dataframe(input_path, hu_min=0.0, hu_max=100.0):
                     "patient_id": str(getattr(dataset, "PatientID", "")),
                     "study_uid": str(getattr(dataset, "StudyInstanceUID", "")),
                     "series_uid": str(getattr(dataset, "SeriesInstanceUID", "")),
-                    "instance_number": int(getattr(dataset, "InstanceNumber", len(records))),
+                    "instance_number": int(
+                        getattr(dataset, "InstanceNumber", len(records))
+                    ),
                     "brain_pixel_fraction": float(mask.mean()),
                     "data": screened,
                 }
@@ -113,7 +120,9 @@ def load_dicom_dataframe(input_path, hu_min=0.0, hu_max=100.0):
             errors.append(f"{path}: {exc}")
     if not records:
         detail = f" ({'; '.join(errors)})" if errors else ""
-        raise ValueError(f"No usable single-frame CT DICOM images found in {input_path}{detail}")
+        raise ValueError(
+            f"No usable single-frame CT DICOM images found in {input_path}{detail}"
+        )
     return pd.DataFrame(records).sort_values(
         ["study_uid", "series_uid", "instance_number"], ignore_index=True
     )
@@ -144,8 +153,15 @@ def plot_dicom(path, output_path=None, hu_min=0.0, hu_max=100.0, show=False):
     return fig
 
 
-def train_dicom_nmf(input_path, output_model, n_components=10, hu_min=0.0,
-                    hu_max=100.0, target_shape=None, max_iter=500):
+def train_dicom_nmf(
+    input_path,
+    output_model,
+    n_components=10,
+    hu_min=0.0,
+    hu_max=100.0,
+    target_shape=None,
+    max_iter=500,
+):
     """HU-screen every input CT slice, build features, train NMF, and save it."""
     frame = load_dicom_dataframe(input_path, hu_min=hu_min, hu_max=hu_max)
     if n_components > len(frame):
@@ -153,7 +169,10 @@ def train_dicom_nmf(input_path, output_model, n_components=10, hu_min=0.0,
             f"n_components ({n_components}) cannot exceed CT slice count ({len(frame)})"
         )
     features, metadata, shape = build_feature_matrix(
-        frame, target_shape=target_shape, force_nonnegative=True, feature_transform="flatten"
+        frame,
+        target_shape=target_shape,
+        force_nonnegative=True,
+        feature_transform="flatten",
     )
     model, errors = train_nmf_detector(
         features, n_components=n_components, max_iter=max_iter
@@ -171,3 +190,50 @@ def train_dicom_nmf(input_path, output_model, n_components=10, hu_min=0.0,
     result = metadata.drop(columns=["data"]).copy()
     result["reconstruction_error"] = errors
     return artifact, result
+
+
+def score_dicom_nmf(input_path, model_or_path):
+    """Apply a saved pipeline to unseen CT slices and return anomaly scores.
+
+    The saved image shape and HU bounds are deliberately reused here so test
+    images receive exactly the same preprocessing as the training images.
+    """
+    artifact = (
+        joblib.load(model_or_path)
+        if isinstance(model_or_path, (str, Path))
+        else model_or_path
+    )
+    required = {"nmf", "shape", "hu_min", "hu_max"}
+    missing = required.difference(artifact)
+    if missing:
+        raise ValueError(f"Model artifact is missing: {', '.join(sorted(missing))}")
+
+    frame = load_dicom_dataframe(
+        input_path, hu_min=artifact["hu_min"], hu_max=artifact["hu_max"]
+    )
+    features, metadata, _ = build_feature_matrix(
+        frame,
+        target_shape=tuple(artifact["shape"]),
+        force_nonnegative=True,
+        feature_transform=artifact.get("feature_transform", "flatten"),
+    )
+    model = artifact["nmf"]
+    weights = model.transform(features)
+    reconstruction = weights @ model.components_
+    scores = np.mean((features - reconstruction) ** 2, axis=1)
+
+    result = metadata.drop(columns=["data"]).copy()
+    result["reconstruction_error"] = scores
+    if "threshold" in artifact:
+        result["predicted_anomaly"] = scores >= artifact["threshold"]
+    return result
+
+
+def calibrate_threshold(normal_scores, percentile=95.0):
+    """Choose an anomaly threshold from held-out, known-normal CT slices."""
+    if not 0 < percentile < 100:
+        raise ValueError("percentile must be between 0 and 100")
+    scores = np.asarray(normal_scores, dtype=float)
+    if scores.size == 0 or not np.isfinite(scores).all():
+        raise ValueError("normal_scores must contain finite values")
+    return float(np.percentile(scores, percentile))
