@@ -5,6 +5,37 @@ This project explores the application of Non-Negative Matrix Factorization (NMF)
 Dataset
 The project utilizes the CMS DIALS Dataset from the CERN Compact Muon Solenoid (CMS) experiment.
 
+## ThresContCT_TBI skull-stripping preview
+
+The repository implements the paper's **ThresContCT_TBI** preprocessing method:
+8-bit CT intensity thresholding (220), 20x20 morphological closing, removal of
+contours smaller than 500 pixels, and a Euclidean distance-transform refinement
+(10 pixels), followed by removal of residual intensities above 240. These are the
+reported defaults and every parameter is available on the command line.
+
+To inspect preprocessing without training NMF, pass a DICOM file/series, a NIfTI
+(`.nii` or `.nii.gz`) volume, or a directory containing either format:
+
+```bash
+python run_skull_stripping.py /path/to/scan-or-directory \
+  --output-dir outputs/threscont-preview
+```
+
+The command processes 3-D volumes slice-by-slice and writes matched PNGs beneath
+`outputs/threscont-preview/before/` and `outputs/threscont-preview/after/`. Raw
+medical-image values are first mapped to 8-bit using a configurable CT window
+(default -100 to 1000):
+
+```bash
+python run_skull_stripping.py scan.nii.gz \
+  --window-min -100 --window-max 1000 \
+  --skull-threshold 220 --distance-threshold 10
+```
+
+This implementation is a research preprocessing utility, not a clinical or
+diagnostic tool. Visually validate the dumps on images from each acquisition
+protocol before using the resulting brain-only pixels for NMF.
+
 ## CT DICOM brain anomaly pipeline
 
 The repository can also train NMF directly from single-frame CT DICOM slices. Each
