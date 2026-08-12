@@ -9,7 +9,9 @@ def build_parser():
     parser = argparse.ArgumentParser(
         description="Apply ThresContCT_TBI skull stripping and dump before/after PNGs."
     )
-    parser.add_argument("input", help="DICOM/NIfTI file or directory")
+    parser.add_argument(
+        "input", help="DICOM, NIfTI, JPEG/PNG image, or directory"
+    )
     parser.add_argument("--output-dir", default="threscont_previews")
     parser.add_argument("--skull-threshold", type=int, default=220)
     parser.add_argument("--closing-kernel", type=int, default=20)

@@ -104,7 +104,7 @@ def _dicom_slices(path):
 
 
 def iter_ct_slices(path):
-    """Yield ``(source, slice_index, image)`` from DICOM/NIfTI input recursively."""
+    """Yield slices from DICOM, NIfTI, or common 8-bit raster inputs recursively."""
     path = Path(path)
     if not path.exists():
         raise FileNotFoundError(path)
@@ -121,12 +121,25 @@ def iter_ct_slices(path):
             for index in range(data.shape[2]):
                 found = True
                 yield candidate, index, data[:, :, index]
+        elif candidate.suffix.lower() in {
+            ".jpg",
+            ".jpeg",
+            ".png",
+            ".bmp",
+            ".tif",
+            ".tiff",
+        }:
+            image = cv2.imread(str(candidate), cv2.IMREAD_GRAYSCALE)
+            if image is None:
+                raise ValueError(f"Could not read raster image: {candidate}")
+            found = True
+            yield candidate, 0, image
         elif pydicom.misc.is_dicom(candidate):
             for index, image in _dicom_slices(candidate):
                 found = True
                 yield candidate, index, image
     if not found:
-        raise ValueError(f"No DICOM or NIfTI CT images found in {path}")
+        raise ValueError(f"No DICOM, NIfTI, JPEG, or PNG CT images found in {path}")
 
 
 def dump_threscont_previews(input_path, output_dir, config=ThresContConfig()):
@@ -137,7 +150,20 @@ def dump_threscont_previews(input_path, output_dir, config=ThresContConfig()):
     after_dir.mkdir(parents=True, exist_ok=True)
     written = []
     for number, (source, index, image) in enumerate(iter_ct_slices(input_path)):
-        stripped, _, normalized = threscont_ct_tbi(image, config)
+        # Raster images already use the 8-bit intensity scale assumed by the
+        # paper. Medical formats contain raw/calibrated values and require the
+        # configurable CT window before applying the reported thresholds.
+        is_raster = source.suffix.lower() in {
+            ".jpg",
+            ".jpeg",
+            ".png",
+            ".bmp",
+            ".tif",
+            ".tiff",
+        }
+        stripped, _, normalized = threscont_ct_tbi(
+            image, config, already_normalized=is_raster
+        )
         stem = source.name.replace(".nii.gz", "").replace(".nii", "")
         filename = f"{number:05d}_{stem}_slice-{index:04d}.png"
         before, after = before_dir / filename, after_dir / filename

@@ -14,7 +14,8 @@ contours smaller than 500 pixels, and a Euclidean distance-transform refinement
 reported defaults and every parameter is available on the command line.
 
 To inspect preprocessing without training NMF, pass a DICOM file/series, a NIfTI
-(`.nii` or `.nii.gz`) volume, or a directory containing either format:
+(`.nii` or `.nii.gz`) volume, a JPEG/PNG image, or a directory containing any of
+these formats:
 
 ```bash
 python run_skull_stripping.py /path/to/scan-or-directory \
@@ -31,6 +32,12 @@ python run_skull_stripping.py scan.nii.gz \
   --window-min -100 --window-max 1000 \
   --skull-threshold 220 --distance-threshold 10
 ```
+
+JPEG, PNG, BMP, and TIFF images are converted to grayscale and used directly on
+their existing 0–255 intensity scale, matching the JPEG inputs evaluated in the
+paper. The CT window options therefore apply only to DICOM and NIfTI values, not
+to raster images. Lossless PNG or TIFF is preferable when exporting new scans;
+JPEG compression may introduce artifacts around high-contrast skull boundaries.
 
 This implementation is a research preprocessing utility, not a clinical or
 diagnostic tool. Visually validate the dumps on images from each acquisition
