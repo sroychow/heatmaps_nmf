@@ -7,7 +7,10 @@ from skull_stripping import ThresContConfig, dump_threscont_previews
 
 def build_parser():
     parser = argparse.ArgumentParser(
-        description="Apply ThresContCT_TBI skull stripping and dump before/after PNGs."
+        description=(
+            "Apply ThresContCT_TBI skull stripping and dump before, after, and "
+            "side-by-side PNGs."
+        )
     )
     parser.add_argument(
         "input", help="DICOM, NIfTI, JPEG/PNG image, or directory"
@@ -35,7 +38,7 @@ def main(argv=None):
         window_max=args.window_max,
     )
     written = dump_threscont_previews(args.input, args.output_dir, config)
-    print(f"Wrote {len(written)} before/after pairs to {args.output_dir}")
+    print(f"Wrote {len(written)} before/after comparisons to {args.output_dir}")
 
 
 if __name__ == "__main__":

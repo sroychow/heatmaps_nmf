@@ -54,6 +54,10 @@ def test_raster_input_is_dumped_without_ct_windowing(tmp_path, extension):
     assert len(written) == 1
     before = cv2.imread(str(written[0][0]), cv2.IMREAD_GRAYSCALE)
     after = cv2.imread(str(written[0][1]), cv2.IMREAD_GRAYSCALE)
+    comparison = cv2.imread(str(written[0][2]), cv2.IMREAD_GRAYSCALE)
     assert before[50, 50] == pytest.approx(100, abs=5)
     assert after[50, 50] == pytest.approx(100, abs=5)
     assert after[10, 50] == 0
+    assert comparison.shape == (100, 200)
+    np.testing.assert_array_equal(comparison[:, :100], before)
+    np.testing.assert_array_equal(comparison[:, 100:], after)

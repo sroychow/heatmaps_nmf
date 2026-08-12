@@ -143,11 +143,13 @@ def iter_ct_slices(path):
 
 
 def dump_threscont_previews(input_path, output_dir, config=ThresContConfig()):
-    """Write before/after PNG files for every input slice and return their paths."""
+    """Write before, after, and side-by-side PNGs for every input slice."""
     output_dir = Path(output_dir)
     before_dir, after_dir = output_dir / "before", output_dir / "after"
+    comparison_dir = output_dir / "comparison"
     before_dir.mkdir(parents=True, exist_ok=True)
     after_dir.mkdir(parents=True, exist_ok=True)
+    comparison_dir.mkdir(parents=True, exist_ok=True)
     written = []
     for number, (source, index, image) in enumerate(iter_ct_slices(input_path)):
         # Raster images already use the 8-bit intensity scale assumed by the
@@ -167,9 +169,11 @@ def dump_threscont_previews(input_path, output_dir, config=ThresContConfig()):
         stem = source.name.replace(".nii.gz", "").replace(".nii", "")
         filename = f"{number:05d}_{stem}_slice-{index:04d}.png"
         before, after = before_dir / filename, after_dir / filename
+        comparison = comparison_dir / filename
+        side_by_side = np.hstack((normalized, stripped))
         if not cv2.imwrite(str(before), normalized) or not cv2.imwrite(
             str(after), stripped
-        ):
+        ) or not cv2.imwrite(str(comparison), side_by_side):
             raise OSError(f"Could not write preview {filename}")
-        written.append((before, after))
+        written.append((before, after, comparison))
     return written

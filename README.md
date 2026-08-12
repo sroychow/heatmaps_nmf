@@ -23,7 +23,10 @@ python run_skull_stripping.py /path/to/scan-or-directory \
 ```
 
 The command processes 3-D volumes slice-by-slice and writes matched PNGs beneath
-`outputs/threscont-preview/before/` and `outputs/threscont-preview/after/`. Raw
+`outputs/threscont-preview/before/` and `outputs/threscont-preview/after/`. It
+also writes each before/after pair in one side-by-side frame beneath
+`outputs/threscont-preview/comparison/`, with the input on the left and the
+skull-stripped result on the right. Raw
 medical-image values are first mapped to 8-bit using a configurable CT window
 (default -100 to 1000):
 
